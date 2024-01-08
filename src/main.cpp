@@ -3,9 +3,12 @@
 #include "vec2.h"
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 
-// TODO: make iOS S shaped background
+typedef std::function<void(color *pixel, int x, int y, int image_width,
+                           int image_height)>
+    component;
 
 #define MAX_LAYERS 10
 
@@ -77,73 +80,9 @@ void generate_noise(decimal_t *noise, unsigned int seed) {
 // h=2796
 // w=1290
 // p=104
-void render_background(color **matrix, int image_width, int image_height,
-                       decimal_t *noise) {
-  for (int y = 0; y < image_height; ++y) {
-    for (int x = 0; x < image_width; ++x) {
-      auto noise_val =
-          noise[(x % NOISE_WIDTH + ((y % NOISE_HEIGHT) * NOISE_WIDTH))];
-      decimal_t brightness{};
 
-      auto func_pos =
-          (sin(static_cast<decimal_t>(image_height - y - 1000) / 350.0) *
-           300.0) *
-              ((static_cast<decimal_t>(
-                    std::pow(image_height - y - image_height / 2, 2)) *
-                2.0) /
-                   image_height +
-               1000) /
-              900.0 +
-          200 + image_width / 2.0;
-      auto distance = ((x - func_pos) / image_width);
-      auto percent = static_cast<decimal_t>(x) / func_pos;
-
-      if (distance > 0) {
-        // left side
-        // if (sin((y - image_height / 3) / 515.0) * 460 >
-        //             x - image_width / 2) {
-
-        // if (distance > 1) {
-        // std::clog << "x:" << x << "func_pos:" << func_pos << '\n';
-        // }
-        // brightness = abs(((x - func_pos) / image_width));
-        // fmax(noise_val - 0.5, 0));
-
-        brightness = 0.5 - ((sin((1.0 / (static_cast<decimal_t>(std::pow(
-                                             (14 * distance + 0.05), 2)) +
-                                         0.118)))) *
-                            (1.0 / (percent + 0.8))) /
-                               2;
-      } else {
-        // right side
-        brightness =
-            10 *
-            pow(1 - abs(percent) -
-                    (0.28 + 0.3 * (static_cast<decimal_t>(y) / image_height)),
-                6);
-        // brightness = abs(sin((x - func_pos) / image_width));
-      }
-
-      if (brightness > 1) {
-        brightness = 1;
-      } else if (brightness < 0) {
-        brightness = 0;
-      }
-
-      if (abs(distance) > 1.0) {
-        std::clog << "distance:" << distance << "percent:" << percent << '\n';
-      }
-
-      // if (percent > 0.9) {
-      //   matrix[y][x] = color(1, 0, 0, 1);
-      // } else {
-      matrix[y][x] = color(noise_val * 0.2, brightness * 0.95, brightness, 1);
-      // }
-    }
-  }
-}
-
-void render_pill(color **matrix, int image_width, int image_height) {
+void pill_component(color *pixel, int x, int y, int image_width,
+                    int image_height) {
   auto pill_height = 15.0;
   auto pill_padding_bottom = 24.0;
   auto pill_width = 462.0;
@@ -151,20 +90,15 @@ void render_pill(color **matrix, int image_width, int image_height) {
   auto pill_middle_x = image_width / 2;
   auto pill_middle_y = image_height - pill_padding_bottom - pill_height;
 
-  for (int y = pill_middle_y - pill_height / 2;
-       y < pill_middle_y + pill_height / 2; ++y) {
-    for (int x = pill_middle_x - pill_width / 2;
-         x < pill_middle_x + pill_width / 2; ++x) {
-      if (is_in_rounded_square(x - pill_middle_x, y - pill_middle_y,
-                               pill_width / 2 - pill_height / 2, 0,
-                               pill_height / 2)) {
-        matrix[y][x] = color(1, 1, 1, 1);
-      }
-    }
+  if (is_in_rounded_square(x - pill_middle_x, y - pill_middle_y,
+                           pill_width / 2 - pill_height / 2, 0,
+                           pill_height / 2)) {
+    *pixel = color(1, 1, 1, 1);
   }
 }
 
-void render_apps(color **matrix, int image_width, int image_height) {
+component create_app_component(int image_width, int image_height) {
+
   auto padding_x = 53;
   auto padding_y = 282;
 
@@ -182,38 +116,115 @@ void render_apps(color **matrix, int image_width, int image_height) {
   // std::clog << "max_apps" << max_apps << '\n';
 
   auto app_end = app_container_size - padding_app;
+  auto component = [padding_y, padding_x, app_container_size, apps_x, max_apps,
+                    padding_app, app_end,
+                    app_size](color *pixel, int x, int y, int image_width,
+                              int image_height) {
+    if (y > padding_y && y < (image_height - padding_y) && x > padding_x &&
+        x < (image_width - padding_x)) {
+      auto x_apps = x - padding_x;
+      auto x_app = x_apps % app_container_size;
 
-  for (int y = 0; y < image_height; ++y) {
-    for (int x = 0; x < image_width; ++x) {
-      if (y > padding_y && y < (image_height - padding_y) && x > padding_x &&
-          x < (image_width - padding_x)) {
-        auto x_apps = x - padding_x;
-        auto x_app = x_apps % app_container_size;
+      auto y_apps = y - padding_y;
+      auto y_app = y_apps % app_container_size;
 
-        auto y_apps = y - padding_y;
-        auto y_app = y_apps % app_container_size;
+      auto i_app = ((x_apps / app_container_size)) +
+                   (((y_apps / app_container_size)) * apps_x);
 
-        auto i_app = ((x_apps / app_container_size)) +
-                     (((y_apps / app_container_size)) * apps_x);
+      // std::clog << "i_app" << i_app << '\n';
 
-        // std::clog << "i_app" << i_app << '\n';
-
-        if (i_app < max_apps) {
-          // app padding
-          if (y_app >= padding_app && y_app < app_end && x_app >= padding_app &&
-              x_app < app_end) {
-            // matrix[y][x] = color(1, 0, 0, 1);
-            int squircleCenter = app_container_size / 2;
-            if (is_in_squircle(x_app - squircleCenter, y_app - squircleCenter,
-                               app_size)) {
-              // static_cast<decimal_t>(i_app) / (apps_x * apps_y)
-              matrix[y][x] = color(
-                  1 - static_cast<decimal_t>(x_app - padding_app) / app_size,
-                  1 - static_cast<decimal_t>(y_app - padding_app) / app_size, 0,
-                  1);
-            }
+      if (i_app < max_apps) {
+        // app padding
+        if (y_app >= padding_app && y_app < app_end && x_app >= padding_app &&
+            x_app < app_end) {
+          // matrix[y][x] = color(1, 0, 0, 1);
+          int squircleCenter = app_container_size / 2;
+          if (is_in_squircle(x_app - squircleCenter, y_app - squircleCenter,
+                             app_size)) {
+            // static_cast<decimal_t>(i_app) / (apps_x * apps_y)
+            *pixel = color(
+                1 - static_cast<decimal_t>(x_app - padding_app) / app_size,
+                1 - static_cast<decimal_t>(y_app - padding_app) / app_size, 0,
+                1);
           }
         }
+      }
+    }
+  };
+  return component;
+}
+
+component create_background_component(decimal_t *noise) {
+  return [noise](color *pixel, int x, int y, int image_width,
+                 int image_height) {
+    auto noise_val =
+        noise[(x % NOISE_WIDTH + ((y % NOISE_HEIGHT) * NOISE_WIDTH))];
+    decimal_t brightness{};
+
+    auto func_pos =
+        (sin(static_cast<decimal_t>(image_height - y - 1000) / 350.0) * 300.0) *
+            ((static_cast<decimal_t>(
+                  std::pow(image_height - y - image_height / 2, 2)) *
+              2.0) /
+                 image_height +
+             1000) /
+            900.0 +
+        200 + image_width / 2.0;
+    auto distance = ((x - func_pos) / image_width);
+    auto percent = static_cast<decimal_t>(x) / func_pos;
+
+    if (distance > 0) {
+      // left side
+      // if (sin((y - image_height / 3) / 515.0) * 460 >
+      //             x - image_width / 2) {
+
+      // if (distance > 1) {
+      // std::clog << "x:" << x << "func_pos:" << func_pos << '\n';
+      // }
+      // brightness = abs(((x - func_pos) / image_width));
+      // fmax(noise_val - 0.5, 0));
+
+      brightness = 0.5 - ((sin((1.0 / (static_cast<decimal_t>(std::pow(
+                                           (14 * distance + 0.05), 2)) +
+                                       0.118)))) *
+                          (1.0 / (percent + 0.8))) /
+                             2;
+    } else {
+      // right side
+      brightness =
+          10 *
+          pow(1 - abs(percent) -
+                  (0.28 + 0.3 * (static_cast<decimal_t>(y) / image_height)),
+              6);
+      // brightness = abs(sin((x - func_pos) / image_width));
+    }
+
+    if (brightness > 1) {
+      brightness = 1;
+    } else if (brightness < 0) {
+      brightness = 0;
+    }
+
+    // if (abs(distance) > 1.0) {
+    //   std::clog << "distance:" << distance << "percent:" << percent << '\n';
+    // }
+    *pixel =
+        color((static_cast<decimal_t>(x) / image_width) * brightness,
+              (static_cast<decimal_t>(y) / image_height) * brightness, 0, 1);
+  };
+}
+
+void render(color **matrix, int image_width, int image_height,
+            component *components[], int component_len,
+            decimal_t slide_up_percent) {
+  int start_height = static_cast<decimal_t>(image_height) * slide_up_percent;
+  for (int y = start_height; y < image_height; ++y) {
+    for (int x = 0; x < image_width; ++x) {
+
+      color *pixel = &matrix[y - start_height][x];
+
+      for (int i = 0; i < component_len; i++) {
+        (*components[i])(pixel, x, y, image_width, image_height);
       }
     }
   }
@@ -253,9 +264,17 @@ int main() {
     }
   }
 
+  auto bg_component = create_background_component(noise);
+  component p_component = pill_component;
+  auto app_component = create_app_component(image_width, image_height);
+
+  component *components[]{&bg_component, &p_component};
   // render_apps(layers[1], image_width, image_height);
-  render_background(layers[2], image_width, image_height, noise);
-  render_pill(layers[2], image_width, image_height);
+
+  component *layer1_components[]{&app_component};
+  render(layers[1], image_width, image_height, layer1_components, 1, 0.1);
+  render(layers[2], image_width, image_height, components, 2, 0.4);
+  // render_pill(layers[2], image_width, image_height);
 
   // for (int i = 0; i < image_height; ++i) {
   //   for (int j = 0; j < image_width; ++j) {
@@ -277,7 +296,7 @@ int main() {
       for (int l = 0; l < MAX_LAYERS; ++l) {
         auto c = layers[l][i][j];
         if (c.a() > 0.0) {
-          final_c += c * c.a();
+          final_c = c;
           if (final_c.r() > 1) {
             final_c.e[0] = 1;
           }
